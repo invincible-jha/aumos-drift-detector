@@ -1,0 +1,50 @@
+# Version control
+.git/
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+.env
+
+# Tests (not needed at runtime)
+tests/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Type checking caches
+.mypy_cache/
+.ruff_cache/
+
+# Documentation
+README.md
+CONTRIBUTING.md
+SECURITY.md
+CHANGELOG.md
+CLAUDE.md
+docs/
+
+# Docker compose files
+docker-compose*.yml
+
+# CI
+.github/
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Secrets (should never be present, but belt-and-suspenders)
+.env
+.env.*
+secrets/
