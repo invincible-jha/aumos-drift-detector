@@ -6,7 +6,10 @@ concrete implementations.
 """
 
 import uuid
-from typing import Protocol, runtime_checkable
+from datetime import datetime
+from typing import Any, Protocol, runtime_checkable
+
+import numpy as np
 
 from aumos_drift_detector.core.models import DriftAlert, DriftDetection, DriftMonitor
 
@@ -332,5 +335,358 @@ class IDriftEventPublisher(Protocol):
             alert_id: Alert record UUID.
             severity: Alert severity level.
             message: Alert message text.
+        """
+        ...
+
+
+@runtime_checkable
+class IFeatureImportanceAnalyser(Protocol):
+    """Contract for SHAP/LIME-based drift feature importance analysis."""
+
+    def rank_features_by_drift(
+        self,
+        reference: dict[str, np.ndarray],
+        production: dict[str, np.ndarray],
+        drift_scores: dict[str, float],
+    ) -> list[Any]:
+        """Rank features by their drift contribution.
+
+        Args:
+            reference: Dict of feature_name to reference samples array.
+            production: Dict of feature_name to production samples array.
+            drift_scores: Pre-computed drift score per feature.
+
+        Returns:
+            List of FeatureImportanceResult ordered by importance_rank.
+        """
+        ...
+
+    def generate_waterfall_data(self, feature_rankings: list[Any]) -> Any:
+        """Generate SHAP waterfall chart data.
+
+        Args:
+            feature_rankings: Ranked feature importance results.
+
+        Returns:
+            WaterfallChartData for visualisation.
+        """
+        ...
+
+    def record_historical_importance(
+        self,
+        monitor_id: uuid.UUID,
+        feature_rankings: list[Any],
+    ) -> None:
+        """Append a timestamped importance snapshot to history.
+
+        Args:
+            monitor_id: UUID of the drift monitor.
+            feature_rankings: Ranked feature importance results.
+        """
+        ...
+
+
+@runtime_checkable
+class IPerformanceMonitor(Protocol):
+    """Contract for model performance monitoring and degradation detection."""
+
+    def add_observation(
+        self,
+        y_true: float | None,
+        y_pred: float,
+        y_score: float | None,
+        segment_key: str | None,
+        timestamp: datetime | None,
+    ) -> str:
+        """Add a prediction observation to the rolling window.
+
+        Args:
+            y_true: Ground truth label (None = delayed label scenario).
+            y_pred: Model's predicted label or value.
+            y_score: Predicted probability or confidence score.
+            segment_key: Optional segment identifier.
+            timestamp: UTC timestamp; defaults to now.
+
+        Returns:
+            Observation ID string.
+        """
+        ...
+
+    def compute_window_metrics(self) -> Any:
+        """Compute performance metrics over the current rolling window.
+
+        Returns:
+            PerformanceMetrics with accuracy, F1, AUC, RMSE, and MAE.
+        """
+        ...
+
+    def detect_degradation(self, metrics: Any) -> list[Any]:
+        """Detect performance degradation against the configured baseline.
+
+        Args:
+            metrics: PerformanceMetrics from compute_window_metrics.
+
+        Returns:
+            List of DegradationAlert for any metrics crossing thresholds.
+        """
+        ...
+
+
+@runtime_checkable
+class IAlertSystem(Protocol):
+    """Contract for configurable multi-channel drift alerting."""
+
+    async def evaluate_and_dispatch(
+        self,
+        monitor_id: uuid.UUID,
+        metric_values: dict[str, float],
+        model_id: uuid.UUID | None,
+    ) -> list[Any]:
+        """Evaluate rules and dispatch alerts for triggered thresholds.
+
+        Args:
+            monitor_id: UUID of the drift monitor.
+            metric_values: Dict of metric_name to current value.
+            model_id: Optional model UUID for rule scoping.
+
+        Returns:
+            List of DispatchedAlert for newly fired alerts.
+        """
+        ...
+
+    def acknowledge_alert(
+        self,
+        alert_id: uuid.UUID,
+        acknowledged_by: uuid.UUID,
+    ) -> bool:
+        """Acknowledge an alert by an operator.
+
+        Args:
+            alert_id: UUID of the alert.
+            acknowledged_by: UUID of the acknowledging user.
+
+        Returns:
+            True if acknowledged successfully.
+        """
+        ...
+
+
+@runtime_checkable
+class IRetrainTrigger(Protocol):
+    """Contract for automated model retraining trigger evaluation."""
+
+    async def evaluate_drift_trigger(
+        self,
+        tenant_id: uuid.UUID,
+        monitor_id: uuid.UUID,
+        model_id: uuid.UUID,
+        detection_id: uuid.UUID,
+        drift_score: float,
+        test_name: str,
+    ) -> Any:
+        """Evaluate whether drift warrants triggering model retraining.
+
+        Args:
+            tenant_id: Owning tenant UUID.
+            monitor_id: Drift monitor UUID.
+            model_id: Target model UUID.
+            detection_id: DriftDetection UUID.
+            drift_score: Aggregate drift score.
+            test_name: Statistical test name.
+
+        Returns:
+            TriggerEvent recording the evaluation outcome.
+        """
+        ...
+
+    async def evaluate_performance_trigger(
+        self,
+        tenant_id: uuid.UUID,
+        monitor_id: uuid.UUID,
+        model_id: uuid.UUID,
+        accuracy: float | None,
+        rmse: float | None,
+    ) -> Any:
+        """Evaluate whether performance degradation warrants retraining.
+
+        Args:
+            tenant_id: Owning tenant UUID.
+            monitor_id: Monitor UUID.
+            model_id: Model UUID.
+            accuracy: Current accuracy (None = not applicable).
+            rmse: Current RMSE (None = not applicable).
+
+        Returns:
+            TriggerEvent recording the evaluation outcome.
+        """
+        ...
+
+
+@runtime_checkable
+class IBaselineManager(Protocol):
+    """Contract for reference distribution baseline management."""
+
+    def capture_baseline(
+        self,
+        model_id: uuid.UUID,
+        model_version: str,
+        feature_data: dict[str, np.ndarray],
+        data_uri: str,
+        tags: dict[str, str] | None,
+        window_days: int,
+        activate: bool,
+    ) -> Any:
+        """Capture a new versioned baseline from feature data arrays.
+
+        Args:
+            model_id: UUID of the model.
+            model_version: Model version string.
+            feature_data: Dict of feature_name to numpy array.
+            data_uri: S3/MinIO URI of the source dataset.
+            tags: Optional metadata tags.
+            window_days: Window size in days (0 = full dataset).
+            activate: Whether to activate this baseline immediately.
+
+        Returns:
+            Newly created BaselineVersion.
+        """
+        ...
+
+    def get_active_baseline(self, model_id: uuid.UUID) -> Any | None:
+        """Return the currently active baseline for a model.
+
+        Args:
+            model_id: UUID of the model.
+
+        Returns:
+            Active BaselineVersion or None.
+        """
+        ...
+
+    def compare_baselines(
+        self,
+        old_baseline_id: uuid.UUID,
+        new_baseline_id: uuid.UUID,
+        significance_threshold: float,
+    ) -> Any:
+        """Compare two baseline versions.
+
+        Args:
+            old_baseline_id: UUID of the older baseline.
+            new_baseline_id: UUID of the newer baseline.
+            significance_threshold: Fractional shift threshold for flagging changes.
+
+        Returns:
+            BaselineComparison result.
+        """
+        ...
+
+
+@runtime_checkable
+class IDriftTrendAnalyzer(Protocol):
+    """Contract for historical drift trend analysis."""
+
+    def record_drift_score(
+        self,
+        monitor_id: uuid.UUID,
+        feature_name: str,
+        score: float,
+        test_name: str,
+        is_drifted: bool,
+        timestamp: datetime | None,
+    ) -> None:
+        """Append a drift score observation to the time series.
+
+        Args:
+            monitor_id: UUID of the drift monitor.
+            feature_name: Name of the feature.
+            score: Drift score value.
+            test_name: Name of the statistical test.
+            is_drifted: Whether the score crossed the threshold.
+            timestamp: UTC timestamp; defaults to now.
+        """
+        ...
+
+    def analyse_feature_trend(
+        self,
+        monitor_id: uuid.UUID,
+        feature_name: str,
+        window_size: int | None,
+    ) -> Any:
+        """Analyse drift score trend for a feature.
+
+        Args:
+            monitor_id: UUID of the drift monitor.
+            feature_name: Feature to analyse.
+            window_size: Optional number of most-recent observations.
+
+        Returns:
+            TrendAnalysis with direction, slope, and change points.
+        """
+        ...
+
+    def forecast_drift(
+        self,
+        monitor_id: uuid.UUID,
+        feature_name: str,
+        horizon_steps: int,
+        drift_threshold: float,
+    ) -> Any:
+        """Forecast future drift scores via linear extrapolation.
+
+        Args:
+            monitor_id: UUID of the drift monitor.
+            feature_name: Feature to forecast.
+            horizon_steps: Number of future steps to forecast.
+            drift_threshold: Drift score above which drift is predicted.
+
+        Returns:
+            DriftForecast with predicted scores and confidence intervals.
+        """
+        ...
+
+
+@runtime_checkable
+class IDriftReportGenerator(Protocol):
+    """Contract for automated drift report generation."""
+
+    def generate_report(
+        self,
+        monitor_id: uuid.UUID,
+        model_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+        feature_results: list[dict[str, Any]],
+        period_start: datetime,
+        baseline_accuracy: float | None,
+        current_accuracy: float | None,
+        historical_scores: dict[str, list[tuple[datetime, float]]] | None,
+        tags: dict[str, str] | None,
+    ) -> Any:
+        """Generate a complete drift assessment report.
+
+        Args:
+            monitor_id: UUID of the drift monitor.
+            model_id: UUID of the model.
+            tenant_id: UUID of the owning tenant.
+            feature_results: List of feature drift result dicts.
+            period_start: Start of the assessment period.
+            baseline_accuracy: Optional baseline accuracy.
+            current_accuracy: Optional current accuracy.
+            historical_scores: Optional dict of feature_name to (timestamp, score) pairs.
+            tags: Optional metadata tags.
+
+        Returns:
+            Generated DriftReport.
+        """
+        ...
+
+    def export_report_json(self, report_id: uuid.UUID) -> str:
+        """Export a report as a JSON string.
+
+        Args:
+            report_id: UUID of the report.
+
+        Returns:
+            JSON string.
         """
         ...
