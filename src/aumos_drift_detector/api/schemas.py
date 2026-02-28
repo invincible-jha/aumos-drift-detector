@@ -243,3 +243,123 @@ class DashboardResponse(BaseModel):
     drift_rate_percent: float
     unacknowledged_alerts: int
     monitors: list[MonitorSummaryItem]
+
+
+# ---------------------------------------------------------------------------
+# Performance estimation schemas (GAP-165: CBPE/DLE)
+# ---------------------------------------------------------------------------
+
+
+class PerformanceEstimateRequest(BaseModel):
+    """Request body for labelless performance estimation."""
+
+    production_probabilities: list[list[float]] = Field(
+        description="Per-sample class probabilities from the model in production",
+    )
+    production_features: list[list[float]] | None = Field(
+        default=None,
+        description="Raw feature vectors for DLE estimation (optional, required for DLE method)",
+    )
+    method: Literal["cbpe", "dle"] = Field(
+        default="cbpe",
+        description="Estimation method: 'cbpe' (confidence-based) or 'dle' (direct loss)",
+    )
+    metric: str = Field(
+        default="accuracy",
+        description="Performance metric to estimate: accuracy, f1, auroc, log_loss",
+    )
+
+
+class PerformanceEstimateResponse(BaseModel):
+    """Response schema for a performance estimate."""
+
+    model_config = ConfigDict(frozen=True)
+
+    monitor_id: uuid.UUID = Field(description="Monitor that was evaluated")
+    method: str = Field(description="Estimation method used")
+    metric: str = Field(description="Metric estimated")
+    estimated_value: float = Field(description="Estimated metric value")
+    confidence_interval_95: dict = Field(description="95% bootstrap confidence interval")
+    n_samples: int = Field(description="Number of production samples used")
+    estimated_at: datetime = Field(description="Estimation timestamp")
+
+
+# ---------------------------------------------------------------------------
+# Multivariate drift schemas (GAP-169)
+# ---------------------------------------------------------------------------
+
+
+class MultivariateDriftRequest(BaseModel):
+    """Request body for multivariate drift detection."""
+
+    reference_data: list[list[float]] = Field(
+        description="Reference feature matrix, shape (n_ref, n_features)",
+    )
+    production_data: list[list[float]] = Field(
+        description="Production feature matrix, shape (n_prod, n_features)",
+    )
+    method: Literal["pca", "classifier"] = Field(
+        default="pca",
+        description="Multivariate drift method: 'pca' (reconstruction error) or 'classifier' (C2ST)",
+    )
+    threshold: float = Field(default=0.15, ge=0.0, le=1.0, description="Drift detection threshold")
+
+
+class MultivariateDriftResponse(BaseModel):
+    """Response for a multivariate drift check."""
+
+    model_config = ConfigDict(frozen=True)
+
+    method: str
+    drift_detected: bool
+    score: float
+    threshold: float
+    details: dict
+
+
+# ---------------------------------------------------------------------------
+# HTML report schemas (GAP-170)
+# ---------------------------------------------------------------------------
+
+
+class ReportGenerateRequest(BaseModel):
+    """Request body for generating an interactive HTML drift report."""
+
+    monitor_id: uuid.UUID = Field(description="Monitor whose history to include in the report")
+    window_days: int = Field(default=30, ge=1, le=365, description="Lookback window in days")
+
+
+class ReportGenerateResponse(BaseModel):
+    """Response containing the generated report download URL."""
+
+    model_config = ConfigDict(frozen=True)
+
+    monitor_id: uuid.UUID
+    report_uri: str = Field(description="S3/MinIO URI where the HTML report is stored")
+    generated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Custom plugin schemas (GAP-173)
+# ---------------------------------------------------------------------------
+
+
+class CustomPluginRunRequest(BaseModel):
+    """Request body for running a custom drift test plugin."""
+
+    plugin_code: str = Field(
+        description="Python source code defining drift_test(reference, production) -> dict",
+        min_length=10,
+    )
+    reference_data: list[float] = Field(description="Reference distribution samples")
+    production_data: list[float] = Field(description="Production distribution samples")
+
+
+class CustomPluginRunResponse(BaseModel):
+    """Response from a custom plugin drift test run."""
+
+    model_config = ConfigDict(frozen=True)
+
+    drift_detected: bool
+    score: float | None = None
+    details: dict

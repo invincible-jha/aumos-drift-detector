@@ -37,6 +37,8 @@ dependencies = [
     "opentelemetry-api>=1.23.0",
     "opentelemetry-sdk>=1.23.0",
     "numpy>=1.26.0",
+    "plotly>=5.20.0",
+    "croniter>=2.0.0",
 ]
 
 [project.optional-dependencies]
